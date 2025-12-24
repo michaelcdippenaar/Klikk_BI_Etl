@@ -1,0 +1,397 @@
+{
+	"info": {
+		"_postman_id": "investec-api-collection",
+		"name": "Investec API",
+		"description": "Postman collection for Investec ETL API endpoints - Transactions and Portfolio",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Transactions",
+			"item": [
+				{
+					"name": "Upload Transaction Excel File",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": [],
+									"description": "Excel file (.xlsx or .xls) containing transaction data"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/investec/upload/",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"investec",
+								"upload",
+								""
+							]
+						},
+						"description": "Upload an Excel file containing Investec transaction data. The endpoint will parse the file and import transactions into the database.\n\n**Expected Excel columns:**\n- Date\n- Account Number\n- Description\n- Share name\n- Quantity\n- Value\n\n**Date Range Extraction:**\nThe date range is automatically extracted from the filename (format: TransactionHistory-All-YYYYMMDD-YYYYMMDD.xlsx) or from the Excel file itself.\nOnly transactions within the extracted date range will be deleted before importing new ones.\nThis ensures that transactions outside the upload date range are preserved.\n\n**Response includes:**\n- Total rows processed\n- Number of transactions created\n- Number of previous records deleted (for the date range only)\n- Date range (from_date and to_date)\n- Any errors encountered during import"
+					},
+					"response": []
+				},
+				{
+					"name": "List Transactions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/investec/transactions/?limit=100&offset=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"investec",
+								"transactions",
+								""
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "100",
+									"description": "Number of records to return (default: 100)"
+								},
+								{
+									"key": "offset",
+									"value": "0",
+									"description": "Number of records to skip (default: 0)"
+								},
+								{
+									"key": "account_number",
+									"value": "",
+									"description": "Filter by account number",
+									"disabled": true
+								},
+								{
+									"key": "share_name",
+									"value": "",
+									"description": "Filter by share name (partial match)",
+									"disabled": true
+								},
+								{
+									"key": "type",
+									"value": "",
+									"description": "Filter by type (Buy, Sell, Dividend, etc.)",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Retrieve a list of Investec transactions with optional filtering and pagination.\n\n**Query Parameters:**\n- `limit`: Number of records to return (default: 100)\n- `offset`: Number of records to skip (default: 0)\n- `account_number`: Filter by exact account number\n- `share_name`: Filter by share name (case-insensitive partial match)\n- `type`: Filter by transaction type (Buy, Sell, Dividend, etc.) (case-insensitive partial match)"
+					},
+					"response": []
+				},
+				{
+					"name": "List Transactions - Filter by Account",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/investec/transactions/?account_number=1812775&limit=100&offset=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"investec",
+								"transactions",
+								""
+							],
+							"query": [
+								{
+									"key": "account_number",
+									"value": "1812775",
+									"description": "Filter by account number"
+								},
+								{
+									"key": "limit",
+									"value": "100"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Example request to filter transactions by account number"
+					},
+					"response": []
+				},
+				{
+					"name": "List Transactions - Filter by Share Name",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/investec/transactions/?share_name=NEDBANK&limit=100&offset=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"investec",
+								"transactions",
+								""
+							],
+							"query": [
+								{
+									"key": "share_name",
+									"value": "NEDBANK",
+									"description": "Filter by share name"
+								},
+								{
+									"key": "limit",
+									"value": "100"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Example request to filter transactions by share name"
+					},
+					"response": []
+				},
+				{
+					"name": "List Transactions - Filter by Type",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/investec/transactions/?type=Buy&limit=100&offset=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"investec",
+								"transactions",
+								""
+							],
+							"query": [
+								{
+									"key": "type",
+									"value": "Buy",
+									"description": "Filter by transaction type"
+								},
+								{
+									"key": "limit",
+									"value": "100"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Example request to filter transactions by type (Buy, Sell, Dividend, etc.)"
+					},
+					"response": []
+				},
+				{
+					"name": "Export Transactions to Excel",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/investec/export/transactions/",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"investec",
+								"export",
+								"transactions",
+								""
+							]
+						},
+						"description": "Export all InvestecJseTransaction data to an Excel file.\n\n**Returns:**\n- Success status\n- Total number of transactions exported\n- Filename of the exported file\n- File path where the Excel file was saved\n\n**Note:** The Excel file is saved in the `investec/source files/` directory with a timestamp in the filename (format: InvestecJseTransaction_Export_YYYYMMDD_HHMMSS.xlsx).\n\n**Excel columns included:**\n- Date, Year, Month, Day\n- Account Number\n- Description\n- Share Name\n- Type\n- Quantity\n- Value\n- Value Per Share\n- Value Calculated\n- Created At, Updated At"
+					},
+					"response": []
+				}
+			],
+			"description": "Transaction-related endpoints"
+		},
+		{
+			"name": "Portfolio",
+			"item": [
+				{
+					"name": "Upload Portfolio Holdings Excel File (Single)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": [],
+									"description": "Excel file (.xlsx or .xls) containing portfolio holdings data"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/investec/portfolio/upload/",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"investec",
+								"portfolio",
+								"upload",
+								""
+							]
+						},
+						"description": "Upload a single Excel file containing Investec portfolio holdings data. The endpoint will parse the file and import portfolio data into the database.\n\n**Required Parameters:**\n- `file`: Excel file containing holdings data\n\n**Date Extraction:**\nThe date is automatically extracted from the Excel file. The system will:\n1. First try to extract date from filename (format: Holdings-YYYYMMDD...)\n2. If not found, search for date patterns in rows around \"Portfolio Holdings Report\" header\n3. Supports various date formats (YYYY-MM-DD, DD/MM/YYYY, YYYYMMDD, etc.)\n\n**Expected Excel columns:**\n- Instrument Description (Company and Share Code)\n- Total Quantity (Column B)\n- Currency (Column C)\n- Unit Cost (Column D)\n- Total Cost (Column E)\n- Price (Column F)\n- Total Value (Column I)\n- Exchange Rate (Column K)\n- Move % (Column N)\n- Portfolio % (Column S)\n- Profit/Loss (Column Y)\n- Annual Income (R)\n\n**Note:** Only rows with quantity > 0 will be imported. All existing portfolio data for the extracted month/year will be deleted before importing (ensures only one version per month).\n\n**Response includes:**\n- Portfolio date (extracted from file)\n- Total rows processed\n- Number of holdings created\n- Number of previous records deleted\n- Imported data (array of portfolio holdings)\n- Any errors encountered during import"
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Portfolio Holdings Excel Files (Multiple)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "files",
+									"type": "file",
+									"src": [],
+									"description": "First Excel file (.xlsx or .xls) containing portfolio holdings data"
+								},
+								{
+									"key": "files",
+									"type": "file",
+									"src": [],
+									"description": "Additional Excel file (optional - add more 'files' entries for multiple uploads)"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/investec/portfolio/upload/",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"investec",
+								"portfolio",
+								"upload",
+								""
+							]
+						},
+						"description": "Upload multiple Excel files containing Investec portfolio holdings data. Each file will be processed independently.\n\n**Required Parameters:**\n- `files`: One or more Excel files containing holdings data (use multiple 'files' entries in form-data)\n\n**Date Extraction:**\nThe date is automatically extracted from each Excel file. The system will:\n1. First try to extract date from filename (format: Holdings-YYYYMMDD...)\n2. If not found, search for date patterns in rows around \"Portfolio Holdings Report\" header\n3. Supports various date formats (YYYY-MM-DD, DD/MM/YYYY, YYYYMMDD, etc.)\n\n**Expected Excel columns:**\n- Instrument Description (Company and Share Code)\n- Total Quantity (Column B)\n- Currency (Column C)\n- Unit Cost (Column D)\n- Total Cost (Column E)\n- Price (Column F)\n- Total Value (Column I)\n- Exchange Rate (Column K)\n- Move % (Column N)\n- Portfolio % (Column S)\n- Profit/Loss (Column Y)\n- Annual Income (R)\n\n**Important:**\n- Only rows with quantity > 0 will be imported\n- For each file, all existing portfolio data for the extracted month/year will be deleted before importing\n- This ensures only one version per month is kept\n- If multiple files have the same month/year, the last file processed will be the final version\n\n**Response includes:**\n- Total files processed\n- Successful and failed file counts\n- Aggregated statistics (total created, deleted, errors)\n- Per-file results with:\n  - Portfolio date (extracted from file)\n  - Total rows processed\n  - Number of holdings created\n  - Number of previous records deleted\n  - Imported data (array of portfolio holdings)\n  - Any errors encountered during import"
+					},
+					"response": []
+				}
+			],
+			"description": "Portfolio holdings-related endpoints"
+		},
+		{
+			"name": "Mapping",
+			"item": [
+				{
+					"name": "Upload Share Name Mapping Excel File",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": [],
+									"description": "Excel file (.xlsx or .xls) containing share name mappings"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/investec/mapping/upload/",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"investec",
+								"mapping",
+								"upload",
+								""
+							]
+						},
+						"description": "Upload an Excel file containing share name mappings. Maps Share Names from transactions to Companies and Share Codes from portfolios.\n\n**Required Columns:**\n- Share_Name (required)\n\n**Optional Columns:**\n- Company\n- Share_Code\n\n**Note:** If a mapping with the same Share_Name already exists, it will be updated with the new Company and Share_Code values.\n\n**Response includes:**\n- Number of new mappings created\n- Number of existing mappings updated\n- Any errors encountered during import"
+					},
+					"response": []
+				},
+				{
+					"name": "Export Companies",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/investec/export/companies/",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"investec",
+								"export",
+								"companies",
+								""
+							]
+						},
+						"description": "Export all unique companies from portfolios with their share codes.\n\n**Returns:**\n- List of companies with their share codes\n- Total count"
+					},
+					"response": []
+				},
+				{
+					"name": "Export Share Names",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/investec/export/share-names/",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"investec",
+								"export",
+								"share-names",
+								""
+							]
+						},
+						"description": "Export all unique share names from transactions.\n\n**Returns:**\n- List of share names\n- Total count"
+					},
+					"response": []
+				}
+			],
+			"description": "Share name mapping and export endpoints"
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		}
+	]
+}
