@@ -49,3 +49,12 @@ db.sqlite3-journal
 .DS_Store
 Thumbs.db
 
+# Temporary Excel files
+~$*.xlsx
+~$*.xls
+~$*.xlsm
+
+# Source files (optional - uncomment if you don't want to track source files)
+# investec/source files/*.xlsx
+# investec/source files/*.xls
+
