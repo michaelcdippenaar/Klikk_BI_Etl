@@ -2,15 +2,18 @@ import pandas as pd
 import re
 import os
 from datetime import datetime
+import traceback
 from rest_framework import status
 from rest_framework.decorators import api_view, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
+from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils.dateparse import parse_date
 from decimal import Decimal, InvalidOperation
 
-from .models import InvestecJseTransaction, InvestecJsePortfolio, InvestecJseShareNameMapping
+from .models import InvestecJseTransaction, InvestecJsePortfolio, InvestecJseShareNameMapping, InvestecJseShareMonthlyPerformance
 from .serializers import InvestecJseTransactionSerializer, InvestecJsePortfolioSerializer, InvestecJseShareNameMappingSerializer
 
 
@@ -18,6 +21,297 @@ from .serializers import InvestecJseTransactionSerializer, InvestecJsePortfolioS
 # ------------------------------------------------
 # Import Transaction Data
 # ------------------------------------------------
+
+def calculate_dividend_ttm(transactions_to_create):
+    """
+    Calculate trailing 12-month (TTM) dividend sum for each transaction.
+    Calculates TTM separately for each dividend type (Dividend, Special Dividend, Foreign Dividend).
+    
+    Steps:
+    1. Get all existing dividend transactions from database
+    2. Combine with new transactions being uploaded
+    3. Filter to dividend types
+    4. Group by share_name AND dividend_type, then resample to monthly (month-end)
+    5. Fill missing months with 0
+    6. Calculate rolling 12-month sum
+    7. Store TTM summary records in database for all months (even months without dividends)
+    8. Return lookup dictionary: (share_name, dividend_type, year, month) -> dividend_ttm
+    """
+    # Dividend types to include
+    dividend_types = ['Dividend', 'Special Dividend', 'Foreign Dividend', 'Dividend Tax']
+    
+    # Get all existing dividend transactions from database
+    # Exclude TTM summary records (they have quantity=0, value=0, description starts with 'TTM Summary') as we only want actual transactions
+    # Use Q object to ensure proper exclusion: exclude records where ALL three conditions are true
+    existing_dividends = InvestecJseTransaction.objects.filter(
+        type__in=dividend_types,
+        share_name__isnull=False
+    ).exclude(share_name='').exclude(
+        Q(quantity=0) & Q(value=0) & Q(description__startswith='TTM Summary')
+    ).values('date', 'share_name', 'type', 'value', 'account_number', 'year', 'month')
+    
+    # Convert to list of dicts for pandas
+    existing_data = [
+        {
+            'date': item['date'],
+            'share_name': item['share_name'],
+            'dividend_type': item['type'],  # Include dividend type
+            'value': float(item['value']),
+            'account_number': item['account_number'],
+            'year': item['year'],
+            'month': item['month']
+        }
+        for item in existing_dividends
+    ]
+    
+    # Add new transactions being uploaded (only dividend types with share_name)
+    # Exclude TTM summary records: they have quantity=0, value=0, and description starts with 'TTM Summary'
+    new_dividends = []
+    for txn in transactions_to_create:
+        if (txn.type in dividend_types and 
+            txn.share_name and txn.share_name.strip() and
+            not (txn.quantity == 0 and txn.value == 0 and txn.description.startswith('TTM Summary'))):
+            new_dividends.append({
+                'date': txn.date,
+                'share_name': txn.share_name,
+                'dividend_type': txn.type,  # Include dividend type
+                'value': float(txn.value),
+                'account_number': txn.account_number,
+                'year': txn.year,
+                'month': txn.month
+            })
+    
+    # Combine existing and new
+    all_dividends = existing_data + new_dividends
+    
+    if not all_dividends:
+        return {}  # No dividends to process
+    
+    # Create DataFrame immediately after combining existing and new records
+    # This is critical: we must convert to DataFrame before any aggregation to enable deduplication
+    df = pd.DataFrame(all_dividends)
+    
+    # CRITICAL: Ensure we exclude any TTM summary records that might have slipped through
+    # TTM summary records have value=0, but we also check account_number if available
+    # Filter out any records where value is 0 (TTM summary records have value=0)
+    # However, we need to be careful: actual dividend transactions should never have value=0
+    # So filtering by value != 0 should be safe
+    if 'value' in df.columns:
+        df = df[df['value'] != 0]
+    
+    # CRITICAL: Remove duplicates immediately after DataFrame creation, BEFORE any aggregation/summing operations.
+    # This prevents double-counting when uploading files that overlap with existing database records.
+    # If a transaction exists in both the database and the upload file, we keep only the first occurrence.
+    # Deduplication is based on: share_name, dividend_type, date, and value (to identify unique transactions).
+    df = df.drop_duplicates(subset=['share_name', 'dividend_type', 'date', 'value'], keep='first')
+    
+    # Convert date to datetime if needed
+    if 'date' in df.columns:
+        df['date'] = pd.to_datetime(df['date'])
+    
+    # Group by share_name AND dividend_type, then process each group
+    ttm_lookup = {}
+    # Store TTM values per share_name AND dividend_type (separate records per dividend type)
+    share_ttm_data = {}  # {(share_name, dividend_type, year, month): {'ttm': ttm_value, 'account_number': account_number}}
+    
+    for (share_name, dividend_type), group_df in df.groupby(['share_name', 'dividend_type']):
+        # Get the account_number from the first transaction in this group
+        # All transactions for the same share/dividend_type should have the same account_number
+        account_number = group_df['account_number'].iloc[0] if 'account_number' in group_df.columns and len(group_df) > 0 else ''
+        
+        # Sort by date
+        group_df = group_df.sort_values('date')
+        
+        # Set date as index for resampling
+        group_df_indexed = group_df.set_index('date')
+        
+        # Resample to monthly (month-end) and sum dividends per month
+        monthly_df = group_df_indexed.resample('ME').agg({
+            'value': 'sum'
+        })
+        
+        # Fill missing months with 0
+        # Create complete date range from earliest to latest date
+        if len(monthly_df) > 0:
+            min_date = monthly_df.index.min()
+            max_date = monthly_df.index.max()
+            
+            # CRITICAL: Extend max_date to at least the current month-end.
+            # This ensures the rolling TTM calculation runs all the way to the present day.
+            # Without this extension, reports for the current month might show empty/incorrect TTM values
+            # if there hasn't been a recent dividend transaction in the current month.
+            # The rolling window needs complete monthly data up to today to calculate accurate TTM values.
+            current_month_end = pd.Timestamp.now().to_period('M').to_timestamp('M')
+            if max_date < current_month_end:
+                max_date = current_month_end
+            
+            date_range = pd.date_range(start=min_date, end=max_date, freq='ME')
+            
+            # Reindex to fill missing months with 0
+            monthly_df = monthly_df.reindex(date_range, fill_value=0)
+            
+            # Ensure value column exists and is numeric
+            if 'value' not in monthly_df.columns:
+                monthly_df['value'] = 0
+            monthly_df['value'] = pd.to_numeric(monthly_df['value'], errors='coerce').fillna(0)
+            
+            # Calculate rolling 12-month sum (window includes current month)
+            monthly_df['dividend_ttm'] = monthly_df['value'].rolling(window=12, min_periods=1).sum()
+            
+            # Create lookup dictionary: (share_name, dividend_type, year, month) -> dividend_ttm
+            for idx, row in monthly_df.iterrows():
+                # Get year and month from the index (month-end date)
+                year = idx.year
+                month = idx.month
+                
+                # Get TTM value and round to 2 decimal places for clean database storage
+                # Rounding prevents floating-point precision issues and ensures consistent values
+                ttm_value = Decimal(str(round(row['dividend_ttm'], 2)))
+                
+                # Store in lookup with dividend_type included (for transaction-level TTM)
+                ttm_lookup[(share_name, dividend_type, year, month)] = ttm_value
+                
+                # Store TTM per dividend_type (separate records per dividend type)
+                key = (share_name, dividend_type, year, month)
+                share_ttm_data[key] = {
+                    'ttm': ttm_value,
+                    'account_number': account_number
+                }
+    
+    # Now create InvestecJseShareMonthlyPerformance records
+    # Get all unique share_names and date ranges
+    if share_ttm_data:
+        # Get portfolio data to find closing prices
+        # Map share_name to share_code using InvestecJseShareNameMapping
+        share_name_to_code = {}
+        mappings = InvestecJseShareNameMapping.objects.filter(
+            share_name__in=[key[0] for key in share_ttm_data.keys()]
+        ).values('share_name', 'share_code')
+        for mapping in mappings:
+            if mapping['share_code']:
+                share_name_to_code[mapping['share_name']] = mapping['share_code']
+        
+        # Get portfolio data (quantity, price, total_value) for all relevant dates
+        # Keys are (share_name, dividend_type, year, month), so we need key[2] and key[3] for year and month
+        all_dates = set((key[2], key[3]) for key in share_ttm_data.keys())  # (year, month) tuples from (share_name, dividend_type, year, month)
+        portfolio_data = {}  # {(share_code, year, month): {'quantity': qty, 'price': price, 'total_value': total_value}}
+        
+        # Get current year and month for comparison
+        current_date = datetime.now()
+        current_year = current_date.year
+        current_month = current_date.month
+        
+        for (year, month) in all_dates:
+            # Check if this is the current month
+            is_current_month = (year == current_year and month == current_month)
+            
+            if is_current_month:
+                # For current month: Get the latest portfolio data within that month
+                # Get all portfolio records for this month, then get the latest one per share_code
+                all_portfolios = InvestecJsePortfolio.objects.filter(
+                    year=year,
+                    month=month
+                ).values('share_code', 'quantity', 'price', 'total_value', 'date').order_by('share_code', '-date')
+                
+                # Group by share_code and take the first (latest) record for each
+                latest_by_share = {}
+                for portfolio in all_portfolios:
+                    share_code = portfolio['share_code']
+                    if share_code not in latest_by_share:
+                        latest_by_share[share_code] = portfolio
+                
+                # Store the latest data for each share_code
+                for share_code, portfolio in latest_by_share.items():
+                    portfolio_data[(share_code, year, month)] = {
+                        'quantity': Decimal(str(portfolio['quantity'])),
+                        'price': Decimal(str(portfolio['price'])),
+                        'total_value': Decimal(str(portfolio['total_value']))
+                    }
+            else:
+                # For historical months: Get portfolio data for month-end date
+                # NOTE: pandas Timestamp is picky: if `year` is a string it treats it as a date string input
+                # and then passing additional date parts triggers:
+                # "Cannot pass a date attribute keyword argument when passing a date string; 'tz' is keyword-only"
+                # So we coerce year/month to int and use keyword args.
+                month_end = pd.Timestamp(year=int(year), month=int(month), day=1).to_period('M').to_timestamp('M').date()
+                
+                portfolios = InvestecJsePortfolio.objects.filter(
+                    date=month_end
+                ).values('share_code', 'quantity', 'price', 'total_value')
+                
+                for portfolio in portfolios:
+                    portfolio_data[(portfolio['share_code'], year, month)] = {
+                        'quantity': Decimal(str(portfolio['quantity'])),
+                        'price': Decimal(str(portfolio['price'])),
+                        'total_value': Decimal(str(portfolio['total_value']))
+                    }
+        
+        # Create InvestecJseShareMonthlyPerformance records
+        performance_records = []
+        
+        for (share_name, dividend_type, year, month), data in share_ttm_data.items():
+            ttm_value = data['ttm']
+            account_number = data['account_number']
+            # Coerce year/month to int for the same reason as above (pandas Timestamp parsing).
+            month_end_date = pd.Timestamp(year=int(year), month=int(month), day=1).to_period('M').to_timestamp('M').date()
+            
+            # Get portfolio data (quantity, price, total_value) from portfolio if available
+            closing_price = None
+            quantity = None
+            total_market_value = None
+            share_code = share_name_to_code.get(share_name)
+            if share_code:
+                portfolio_info = portfolio_data.get((share_code, year, month))
+                if portfolio_info:
+                    closing_price = portfolio_info['price']
+                    quantity = portfolio_info['quantity']
+                    total_market_value = portfolio_info['total_value']
+            
+            # Calculate dividend yield: Dividend Yield = Total Dividend Cash Received TTM / Total Market Value
+            # Total Market Value = Quantity × Price (from portfolio)
+            # If no portfolio data exists for a month, set dividend_yield = 0
+            dividend_yield = Decimal('0')  # Default to 0 if no portfolio data
+            if total_market_value and total_market_value > 0 and ttm_value > 0:
+                dividend_yield = (ttm_value / total_market_value)
+            
+            performance_records.append(
+                InvestecJseShareMonthlyPerformance(
+                    share_name=share_name,
+                    date=month_end_date,
+                    year=year,
+                    month=month,
+                    dividend_type=dividend_type,
+                    investec_account=account_number,
+                    dividend_ttm=ttm_value,
+                    closing_price=closing_price,
+                    quantity=quantity,
+                    total_market_value=total_market_value,
+                    dividend_yield=dividend_yield,
+                )
+            )
+        
+        # Store InvestecJseShareMonthlyPerformance records using bulk operations
+        # Delete existing records for these shares/dates/dividend_types, then bulk create new ones
+        if performance_records:
+            # Get unique share_names, dividend_types, and date range
+            share_names = list(set(rec.share_name for rec in performance_records))
+            dividend_types = list(set(rec.dividend_type for rec in performance_records))
+            min_date = min(rec.date for rec in performance_records)
+            max_date = max(rec.date for rec in performance_records)
+            
+            # Delete existing records for this date range and dividend types
+            InvestecJseShareMonthlyPerformance.objects.filter(
+                share_name__in=share_names,
+                dividend_type__in=dividend_types,
+                date__gte=min_date,
+                date__lte=max_date
+            ).delete()
+            
+            # Bulk create new records
+            InvestecJseShareMonthlyPerformance.objects.bulk_create(performance_records, ignore_conflicts=False)
+    
+    return ttm_lookup
+
 
 @api_view(['POST'])
 @parser_classes([MultiPartParser, FormParser])
@@ -528,6 +822,38 @@ def excel_upload_view(request):
                 errors.append(f'Row {index + 2}: {str(e)}')
                 continue
         
+        # Calculate Dividend TTM for all transactions
+        try:
+            ttm_lookup = calculate_dividend_ttm(transactions_to_create)
+        except Exception as e:
+            payload = {
+                'error': f'Error processing file: {str(e)}',
+                'exception_type': type(e).__name__,
+                'context': 'calculate_dividend_ttm(transactions_to_create)',
+                'pandas_version': getattr(pd, '__version__', None),
+            }
+            if getattr(settings, 'DEBUG', False):
+                payload['traceback'] = traceback.format_exc()
+            return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Dividend types that should have TTM calculated
+        dividend_types = ['Dividend', 'Special Dividend', 'Foreign Dividend', 'Dividend Tax']
+        
+        # Map TTM values to transactions
+        for txn in transactions_to_create:
+            # Only calculate TTM for dividend types with share_name
+            if (txn.type in dividend_types and 
+                txn.share_name and txn.share_name.strip() and 
+                txn.year and txn.month):
+                # Lookup key now includes dividend_type: (share_name, dividend_type, year, month)
+                lookup_key = (txn.share_name, txn.type, txn.year, txn.month)
+                if lookup_key in ttm_lookup:
+                    txn.dividend_ttm = ttm_lookup[lookup_key]
+                else:
+                    txn.dividend_ttm = None
+            else:
+                txn.dividend_ttm = None
+        
         # Bulk create transactions
         created_count = 0
         if transactions_to_create:
@@ -579,10 +905,14 @@ def excel_upload_view(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
-        return Response(
-            {'error': f'Error processing file: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        payload = {
+            'error': f'Error processing file: {str(e)}',
+            'exception_type': type(e).__name__,
+            'pandas_version': getattr(pd, '__version__', None),
+        }
+        if getattr(settings, 'DEBUG', False):
+            payload['traceback'] = traceback.format_exc()
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
@@ -596,8 +926,19 @@ def transaction_list_view(request):
     - account_number: Filter by account number
     - share_name: Filter by share name
     - type: Filter by type (Buy, Sell, Dividend, etc.)
+    - include_ttm_summary: Include TTM summary records (default: True). Set to 'false' to exclude TTM summary records.
     """
     queryset = InvestecJseTransaction.objects.all()
+    
+    # Filter out TTM summary records by default, unless explicitly requested
+    # TTM summary records are identified by quantity=0, value=0, and description starting with 'TTM Summary'
+    include_ttm_summary = request.query_params.get('include_ttm_summary', 'false').lower() == 'true'
+    if not include_ttm_summary:
+        queryset = queryset.exclude(
+            quantity=0,
+            value=0,
+            description__startswith='TTM Summary'
+        )
     
     # Apply filters
     account_number = request.query_params.get('account_number', None)
@@ -1259,6 +1600,7 @@ def export_transactions_view(request):
                 'Value': float(txn.value) if txn.value else None,
                 'Value Per Share': float(txn.value_per_share) if txn.value_per_share else None,
                 'Value Calculated': float(txn.value_calculated) if txn.value_calculated else None,
+                'Dividend TTM': float(txn.dividend_ttm) if txn.dividend_ttm else None,
                 'Created At': created_at,
                 'Updated At': updated_at,
             })

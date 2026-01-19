@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import InvestecJseTransaction, InvestecJsePortfolio, InvestecJseShareNameMapping
+from .models import InvestecJseTransaction, InvestecJsePortfolio, InvestecJseShareNameMapping, InvestecJseShareMonthlyPerformance
 
 
 class InvestecJseTransactionSerializer(serializers.ModelSerializer):
@@ -61,6 +61,30 @@ class InvestecJseShareNameMappingSerializer(serializers.ModelSerializer):
             'share_name',
             'company',
             'share_code',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class InvestecJseShareMonthlyPerformanceSerializer(serializers.ModelSerializer):
+    """Serializer for InvestecJseShareMonthlyPerformance model."""
+    
+    class Meta:
+        model = InvestecJseShareMonthlyPerformance
+        fields = [
+            'id',
+            'share_name',
+            'date',
+            'year',
+            'month',
+            'dividend_type',
+            'investec_account',
+            'dividend_ttm',
+            'closing_price',
+            'quantity',
+            'total_market_value',
+            'dividend_yield',
             'created_at',
             'updated_at',
         ]

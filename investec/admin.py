@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import InvestecJseTransaction, InvestecJsePortfolio, InvestecJseShareNameMapping
+from .models import InvestecJseTransaction, InvestecJsePortfolio, InvestecJseShareNameMapping, InvestecJseShareMonthlyPerformance
 
 
 @admin.register(InvestecJseTransaction)
@@ -24,4 +24,13 @@ class InvestecJseShareNameMappingAdmin(admin.ModelAdmin):
     list_display = ['share_name', 'company', 'share_code', 'created_at', 'updated_at']
     list_filter = ['company']
     search_fields = ['share_name', 'company', 'share_code']
+    readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(InvestecJseShareMonthlyPerformance)
+class InvestecJseShareMonthlyPerformanceAdmin(admin.ModelAdmin):
+    list_display = ['share_name', 'date', 'year', 'month', 'dividend_type', 'investec_account', 'dividend_ttm', 'closing_price', 'quantity', 'total_market_value', 'dividend_yield', 'created_at', 'updated_at']
+    list_filter = ['date', 'year', 'month', 'share_name', 'dividend_type', 'investec_account']
+    search_fields = ['share_name']
+    date_hierarchy = 'date'
     readonly_fields = ['created_at', 'updated_at']

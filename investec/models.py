@@ -54,6 +54,7 @@ class InvestecJseTransaction(models.Model):
     value = models.DecimalField(max_digits=15, decimal_places=2)
     value_per_share = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  # Value per share in rands (only for Buy/Sell transactions)
     value_calculated = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  # Calculated value: value_per_share * quantity (negative for Buy transactions)
+    dividend_ttm = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  # Trailing 12-month dividend sum
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -134,3 +135,49 @@ class InvestecJsePortfolio(models.Model):
     
     def __str__(self):
         return f"{self.date} - {self.company} ({self.share_code}) - Qty: {self.quantity}"
+
+
+# ------------------------------------------------
+# Share Performance Models
+# ------------------------------------------------
+
+class InvestecJseShareMonthlyPerformance(models.Model):
+    """Model to store monthly share performance metrics including TTM dividends and dividend yield."""
+    
+    share_name = models.CharField(max_length=100, db_index=True)
+    date = models.DateField()  # Month End date
+    year = models.IntegerField(null=True, blank=True)
+    month = models.IntegerField(null=True, blank=True)
+    dividend_type = models.CharField(max_length=50, db_index=True)  # Dividend type: 'Dividend', 'Special Dividend', 'Foreign Dividend', 'Dividend Tax'
+    investec_account = models.CharField(max_length=50, blank=True, null=True, db_index=True)  # Account number from transactions
+    dividend_ttm = models.DecimalField(max_digits=15, decimal_places=2)  # Trailing 12-month dividend sum
+    closing_price = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  # Share price at month end
+    quantity = models.DecimalField(max_digits=15, decimal_places=4, null=True, blank=True)  # Quantity held at month end
+    total_market_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  # Total market value (Quantity × Price)
+    dividend_yield = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)  # e.g., 0.0523 for 5.23% (dividend_ttm / total_market_value)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-date', 'share_name']
+        verbose_name = 'Investec Jse Share Monthly Performance'
+        verbose_name_plural = 'Investec Jse Share Monthly Performances'
+        unique_together = ('share_name', 'date', 'dividend_type')
+        indexes = [
+            models.Index(fields=['share_name', 'date']),
+            models.Index(fields=['date']),
+            models.Index(fields=['year', 'month']),
+            models.Index(fields=['dividend_type']),
+            models.Index(fields=['investec_account']),
+        ]
+    
+    def save(self, *args, **kwargs):
+        """Automatically populate year and month from date field."""
+        if self.date:
+            self.year = self.date.year
+            self.month = self.date.month
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.share_name} - {self.date} - TTM: {self.dividend_ttm}"
