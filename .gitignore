@@ -58,3 +58,6 @@ Thumbs.db
 # investec/source files/*.xlsx
 # investec/source files/*.xls
 
+# Database dumps
+*.sql
+*.dump

@@ -25,3 +25,28 @@ DATABASES = {
         }
     }
 }
+
+
+# Update JWT signing key
+
+
+# Static files configuration for staging
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Media files (if you have user uploads)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Use WhiteNoise to serve static files when DEBUG=False
+# Install with: pip install whitenoise
+# Add 'whitenoise.middleware.WhiteNoiseMiddleware' to MIDDLEWARE (already in base.py)
+# WhiteNoise should be added after SecurityMiddleware and before other middleware
+# For now, we'll serve static files via URL patterns (see urls.py)
+
+# Security settings for staging
+SECURE_SSL_REDIRECT = False  # Set to True if using HTTPS
+SESSION_COOKIE_SECURE = False  # Set to True if using HTTPS
+CSRF_COOKIE_SECURE = False  # Set to True if using HTTPS
+
+
