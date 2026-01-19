@@ -49,4 +49,12 @@ SECURE_SSL_REDIRECT = False  # Set to True if using HTTPS
 SESSION_COOKIE_SECURE = False  # Set to True if using HTTPS
 CSRF_COOKIE_SECURE = False  # Set to True if using HTTPS
 
+# CSRF trusted origins for staging
+# Add port if using one (e.g., http://192.168.1.236:8000)
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='http://localhost,http://127.0.0.1,http://192.168.1.236,http://localhost:8000,http://127.0.0.1:8000,http://192.168.1.236:8000',
+    cast=lambda v: [s.strip() for s in v.split(',')]
+)
+
 

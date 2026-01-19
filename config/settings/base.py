@@ -105,3 +105,12 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.BrowsableAPIRenderer',
     ],
 }
+
+# CSRF settings - trusted origins for cross-origin requests
+# This is required when accessing the app from a different host/IP
+# If using a specific port, add it (e.g., http://192.168.1.236:8000)
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='http://localhost,http://127.0.0.1,http://192.168.1.236,http://localhost:8000,http://127.0.0.1:8000,http://192.168.1.236:8000',
+    cast=lambda v: [s.strip() for s in v.split(',')]
+)

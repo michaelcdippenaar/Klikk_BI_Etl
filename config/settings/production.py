@@ -31,5 +31,13 @@ SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=False, cast=bool)
 SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=False, cast=bool)
 CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=False, cast=bool)
 
+# CSRF trusted origins for production
+# Add port if using one (e.g., http://192.168.1.236:8000)
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='http://192.168.1.236,https://192.168.1.236,http://192.168.1.236:8000,https://192.168.1.236:8000',
+    cast=lambda v: [s.strip() for s in v.split(',')]
+)
+
 # Static files served by gunicorn/nginx in production
 STATIC_ROOT = BASE_DIR / 'staticfiles'
