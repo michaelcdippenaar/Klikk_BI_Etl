@@ -1,0 +1,169 @@
+{
+	"info": {
+		"_postman_id": "klikk-bi-etl-api-2025",
+		"name": "Klikk BI ETL API",
+		"description": "API collection for Klikk BI ETL (Investec). Base URL: `{{base_url}}` (e.g. http://192.168.1.235:8001)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://192.168.1.235:8001"
+		}
+	],
+	"item": [
+		{
+			"name": "Uploads",
+			"item": [
+				{
+					"name": "Upload Transactions (Excel)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": "",
+									"description": "Excel file (.xlsx or .xls) with transaction data"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/investec/upload/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "investec", "upload", ""]
+						},
+						"description": "Upload a single Excel file to import transactions. Use form field 'file'."
+					}
+				},
+				{
+					"name": "Upload Portfolio / Holdings (Excel)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": "",
+									"description": "Single Excel file (use 'file')"
+								},
+								{
+									"key": "file",
+									"type": "file",
+									"src": "",
+									"description": "Additional file (repeat 'file' for multiple)"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/investec/portfolio/upload/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "investec", "portfolio", "upload", ""]
+						},
+						"description": "Upload one or more Excel files to import portfolio holdings. Use form field 'file' (single) or multiple 'file' fields. Date is extracted from each file."
+					}
+				},
+				{
+					"name": "Upload Share Name Mapping (Excel)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": "",
+									"description": "Excel with columns: Share_Name, Company, Share_Code"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/investec/mapping/upload/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "investec", "mapping", "upload", ""]
+						},
+						"description": "Upload Excel file to import share name mappings. Expected columns: Share_Name, Company (optional), Share_Code (optional)."
+					}
+				}
+			]
+		},
+		{
+			"name": "Transactions",
+			"item": [
+				{
+					"name": "List Transactions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/investec/transactions/?limit=100&offset=0",
+							"host": ["{{base_url}}"],
+							"path": ["api", "investec", "transactions", ""],
+							"query": [
+								{"key": "limit", "value": "100", "description": "Number of records (default 100)"},
+								{"key": "offset", "value": "0", "description": "Records to skip (default 0)"},
+								{"key": "account_number", "value": "", "description": "Filter by account number", "disabled": true},
+								{"key": "share_name", "value": "", "description": "Filter by share name (partial match)", "disabled": true},
+								{"key": "type", "value": "", "description": "Filter by type (Buy, Sell, Dividend, etc.)", "disabled": true},
+								{"key": "include_ttm_summary", "value": "false", "description": "Include TTM summary records (true/false, default false)"}
+							]
+						},
+						"description": "List Investec transactions with optional filters and pagination."
+					}
+				}
+			]
+		},
+		{
+			"name": "Exports",
+			"item": [
+				{
+					"name": "Export Companies",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/investec/export/companies/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "investec", "export", "companies", ""]
+						},
+						"description": "Returns all unique companies from portfolios with share codes (JSON: count, companies)."
+					}
+				},
+				{
+					"name": "Export Share Names",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/investec/export/share-names/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "investec", "export", "share-names", ""]
+						},
+						"description": "Returns all unique share names from transactions (JSON: count, share_names)."
+					}
+				},
+				{
+					"name": "Export Transactions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/investec/export/transactions/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "investec", "export", "transactions", ""]
+						},
+						"description": "Exports all transactions to an Excel file on the server. Returns JSON with success, filename, filepath, count."
+					}
+				}
+			]
+		}
+	]
+}

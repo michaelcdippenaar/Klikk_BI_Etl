@@ -1,0 +1,18 @@
+[Unit]
+Description=Klikk BI ETL (Gunicorn)
+After=network.target postgresql.service
+
+[Service]
+User=mc
+Group=www-data
+WorkingDirectory=/home/mc/apps/Klikk_BI_Etl
+Environment=DJANGO_SETTINGS_MODULE=config.settings.staging
+Environment=PYTHONPATH=/home/mc/apps/Klikk_BI_Etl
+ExecStart=/home/mc/apps/Klikk_BI_Etl/venv/bin/gunicorn config.wsgi:application \
+  --bind 0.0.0.0:8001 \
+  --workers 2 \
+  --timeout 120
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
